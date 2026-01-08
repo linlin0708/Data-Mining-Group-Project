@@ -17,13 +17,14 @@
 ### Task 2: Risk Category Classification (Owner: [John] & MingHang)
 
 - [x] **Generate Target:** Create `Risk Category` column (High/Low) using LLM or Quantile Rules.
+- [x] **Mitigate Leakage:** Inject 10% noise to `Risk Category` labels.
 - [x] **Pre-processing:** Encode categorical variables (LabelEncoder/OneHot).
 - [x] **Train Model 1:** Decision Tree Classifier.
 - [x] **Train Model 2:** Logistic Regression (Extract Coefficients).
-- [ ] **Train Model 3:** Naive Bayes.
+- [x] **Train Model 3:** Naive Bayes.
 - [x] **Evaluation:** Print Classification Report (Precision/Recall).
 - [x] **Evaluation:** Plot Confusion Matrix.
-- [ ] **Evaluation:** Plot ROC-AUC Curve (only printed score so far).
+- [x] **Evaluation:** Plot ROC-AUC Curve.
 - [x] **Evaluation:** Plot Pie Chart of Predicted Risk Distribution.
 
 ### Task 3: Loan Amount Regression (Owner: Wendy & JuenKai)
