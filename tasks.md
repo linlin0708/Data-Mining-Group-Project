@@ -17,7 +17,6 @@
 ### Task 2: Risk Category Classification (Owner: [John] & MingHang)
 
 - [x] **Generate Target:** Create `Risk Category` column (High/Low) using LLM or Quantile Rules.
-- [x] **Mitigate Leakage:** Inject 10% noise to `Risk Category` labels.
 - [x] **Pre-processing:** Encode categorical variables (LabelEncoder/OneHot).
 - [x] **Train Model 1:** Decision Tree Classifier.
 - [x] **Train Model 2:** Logistic Regression (Extract Coefficients).
@@ -47,4 +46,4 @@
 
 ## Notes & Changes
 
-- _Current Status:_ Dataset generated. Task 1 modeling started. Task 2 pending start.
+- _Current Status:_ Phase 1 and Phase 2 (Task 1 & 2) complete. Task 3 pending. John to extract feature importance next.
