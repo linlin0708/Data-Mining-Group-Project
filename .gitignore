@@ -4,3 +4,5 @@ __pycache__/
 *.csv
 !loan_applicants_dataset_latest.csv
 .cursor/
+.specs.md
+.tasks.md

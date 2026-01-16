@@ -608,6 +608,14 @@ nb_pred = nb.predict(X_test)
 print("Naive Bayes Results (Risk Category)")
 print(classification_report(y_test, nb_pred, target_names=label_encoder_risk.classes_))
 
+# calculate and print roc auc
+nb_proba = nb.predict_proba(X_test)
+high_col_idx = list(nb.classes_).index(high_label)
+y_true_high = (y_test == high_label).astype(int)
+y_score_high = nb_proba[:, high_col_idx]
+nb_auc = roc_auc_score(y_true_high, y_score_high)
+print(f"\nNaive Bayes ROC AUC (High as positive): {round(nb_auc, 4)}")
+
 # plots
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
@@ -620,12 +628,86 @@ ax2.set_title("Naive Bayes - ROC Curve")
 plt.tight_layout()
 plt.show()
 
-# pie chart
-pred_counts = pd.Series(nb_pred).value_counts().sort_index()
-labels = label_encoder_risk.inverse_transform(pred_counts.index)
-plt.figure(figsize=(5,5))
-plt.pie(pred_counts.values, labels=labels, autopct="%1.1f%%", startangle=90)
-plt.title("Naive Bayes - Predicted Risk Category Distribution")
+# %%
+#Outcome distribution plots
+class_labels = list(label_encoder_risk.classes_)
+class_ids = label_encoder_risk.transform(class_labels)
+actual_counts = pd.Series(y_test).value_counts().reindex(class_ids, fill_value=0)
+pred_counts   = pd.Series(nb_pred).value_counts().reindex(class_ids, fill_value=0)
+fig = plt.figure(figsize=(12, 4))
+
+# Donut plot
+ax1 = fig.add_subplot(1, 2, 1)
+ax1.pie(
+    pred_counts.values,
+    labels=class_labels,
+    autopct="%1.1f%%",
+    startangle=90,
+    wedgeprops=dict(width=0.45)
+)
+ax1.set_title("Naive Bayes Predictions Distribution\n(Donut Chart)")
+
+# Actual vs Predicted bar
+ax2 = fig.add_subplot(1, 2, 2)
+x = np.arange(len(class_labels))
+width = 0.35
+ax2.bar(x - width/2, actual_counts.values, width, label="Actual")
+ax2.bar(x + width/2, pred_counts.values, width, label="Predicted")
+ax2.set_xticks(x)
+ax2.set_xticklabels(class_labels)
+ax2.set_ylabel("Count")
+ax2.set_title("Comparison: Actual vs Predicted Distribution")
+ax2.legend()
+
+plt.tight_layout()
 plt.show()
 
 
+# %% [markdown]
+# ## **Section 6.0: Model Interpretation & Business Insights (LLM Generated)**
+
+# %%
+import numpy as np
+
+# 1. Extract statistical summaries using your actual variable names (dtc, lr, nb)
+feature_names = ["Monthly Income", "Account Balance", "Credit Score", "Total Loan Applied", "Loan Duration"]
+
+# Get Top 3 Features from Decision Tree (Risk Model)
+dt_importances = dtc.feature_importances_
+dt_top_3_idx = np.argsort(dt_importances)[-3:][::-1]
+dt_top_3_names = [feature_names[i] for i in dt_top_3_idx]
+dt_top_3_vals = [round(dt_importances[i], 3) for i in dt_top_3_idx]
+
+# Get Top 3 Coefficients from Logistic Regression (Risk Model)
+lr_coeffs = lr.coef_[0]
+lr_top_3_idx = np.argsort(np.abs(lr_coeffs))[-3:][::-1]
+lr_top_3_names = [feature_names[i] for i in lr_top_3_idx]
+
+# 2. Construct the Rubric-Aligned Prompt
+insight_prompt = f"""
+<s>[INST] Role: Senior Banking Data Analyst.
+Task: Summarize findings, interpret feature importance, and provide business insights based on these model results.
+
+Model Performance:
+- Decision Tree: 91% Accuracy, 0.97 Recall (Safety).
+- Logistic Regression: 81% Accuracy.
+- Naive Bayes: AUC of {round(nb_auc, 4)}.
+
+Top Features (Decision Tree): {list(zip(dt_top_3_names, dt_top_3_vals))}
+Key Influencers (Logistic Regression): {lr_top_3_names}
+
+Please provide the output in this exact structure:
+### 1. Executive Summary of Findings
+### 2. Interpretation of Feature Importance
+(Explain why {dt_top_3_names[0]} and {dt_top_3_names[1]} are critical predictors)
+### 3. Business Insights & Recommendations
+[/INST]
+"""
+
+# 3. Generate with Mistral
+inputs = tokenizer(insight_prompt, return_tensors="pt").to(device)
+outputs = model.generate(**inputs, max_new_tokens=600, temperature=0.7, do_sample=True)
+response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+# 4. Display
+print(response.split("[/INST]")[-1].strip())
