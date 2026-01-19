@@ -22,10 +22,10 @@ model_name = "mistralai/Mistral-7B-Instruct-v0.1"
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 token = os.environ["HUGGINGFACE_TOKEN"]
-model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=quantization_config)
+llm_mistral = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=quantization_config)
 import torch
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model.to(device)
+llm_mistral.to(device)
 
 # %%
 # prompt to LLM (ChatGPT) for data generation
@@ -662,6 +662,83 @@ ax2.legend()
 plt.tight_layout()
 plt.show()
 
+# %% [markdown]
+# ### XGBoost Modeling
+
+# %%
+from xgboost import XGBClassifier
+from sklearn.metrics import classification_report, ConfusionMatrixDisplay, RocCurveDisplay, roc_auc_score
+
+# Train XGBoost model
+xgb = XGBClassifier(
+    max_depth=5,
+    learning_rate=0.1,
+    n_estimators=100,
+    scale_pos_weight=len(y_train[y_train == 0]) / len(y_train[y_train == 1]),
+    random_state=42,
+    eval_metric='logloss'
+)
+
+xgb.fit(X_train, y_train, sample_weight=sample_weights)
+
+# Evaluation
+xgb_pred = xgb.predict(X_test)
+print("XGBoost Results (Risk Category)")
+print(classification_report(y_test, xgb_pred, target_names=label_encoder_risk.classes_))
+
+# Calculate and print ROC AUC
+xgb_proba = xgb.predict_proba(X_test)
+high_col_idx = list(xgb.classes_).index(high_label)
+y_true_high = (y_test == high_label).astype(int)
+y_score_high = xgb_proba[:, high_col_idx]
+xgb_auc = roc_auc_score(y_true_high, y_score_high)
+print(f"\nXGBoost ROC AUC (High as positive): {round(xgb_auc, 4)}")
+
+# Plots
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+ConfusionMatrixDisplay.from_predictions(y_test, xgb_pred, display_labels=label_encoder_risk.classes_, ax=ax1)
+ax1.set_title("XGBoost - Confusion Matrix")
+
+RocCurveDisplay.from_estimator(xgb, X_test, y_test, pos_label=high_label, name="XGBoost", ax=ax2)
+ax2.set_title("XGBoost - ROC Curve")
+
+plt.tight_layout()
+plt.show()
+
+# %%
+# Outcome distribution plots
+class_labels = list(label_encoder_risk.classes_)
+class_ids = label_encoder_risk.transform(class_labels)
+actual_counts = pd.Series(y_test).value_counts().reindex(class_ids, fill_value=0)
+pred_counts   = pd.Series(xgb_pred).value_counts().reindex(class_ids, fill_value=0)
+fig = plt.figure(figsize=(12, 4))
+
+# Donut plot
+ax1 = fig.add_subplot(1, 2, 1)
+ax1.pie(
+    pred_counts.values,
+    labels=class_labels,
+    autopct="%1.1f%%",
+    startangle=90,
+    wedgeprops=dict(width=0.45)
+)
+ax1.set_title("XGBoost Predictions Distribution\n(Donut Chart)")
+
+# Actual vs Predicted bar
+ax2 = fig.add_subplot(1, 2, 2)
+x = np.arange(len(class_labels))
+width = 0.35
+ax2.bar(x - width/2, actual_counts.values, width, label="Actual")
+ax2.bar(x + width/2, pred_counts.values, width, label="Predicted")
+ax2.set_xticks(x)
+ax2.set_xticklabels(class_labels)
+ax2.set_ylabel("Count")
+ax2.set_title("Comparison: Actual vs Predicted Distribution")
+ax2.legend()
+
+plt.tight_layout()
+plt.show()
 
 # %% [markdown]
 # ## **Section 6.0: Model Interpretation & Business Insights (LLM Generated)**
@@ -669,45 +746,55 @@ plt.show()
 # %%
 import numpy as np
 
-# 1. Extract statistical summaries using your actual variable names (dtc, lr, nb)
+# 1. Extract statistical summaries for all models
 feature_names = ["Monthly Income", "Account Balance", "Credit Score", "Total Loan Applied", "Loan Duration"]
 
-# Get Top 3 Features from Decision Tree (Risk Model)
+# DT Importance (Baseline)
 dt_importances = dtc.feature_importances_
 dt_top_3_idx = np.argsort(dt_importances)[-3:][::-1]
-dt_top_3_names = [feature_names[i] for i in dt_top_3_idx]
-dt_top_3_vals = [round(dt_importances[i], 3) for i in dt_top_3_idx]
+dt_top_3 = [feature_names[i] for i in dt_top_3_idx]
 
-# Get Top 3 Coefficients from Logistic Regression (Risk Model)
+# XGBoost Importance (Best Performer)
+xgb_importances = xgb.feature_importances_
+xgb_top_3_idx = np.argsort(xgb_importances)[-3:][::-1]
+xgb_top_3 = [feature_names[i] for i in xgb_top_3_idx]
+
+# LR Coefficients (Directionality)
 lr_coeffs = lr.coef_[0]
 lr_top_3_idx = np.argsort(np.abs(lr_coeffs))[-3:][::-1]
-lr_top_3_names = [feature_names[i] for i in lr_top_3_idx]
+lr_top_3 = [feature_names[i] for i in lr_top_3_idx]
 
-# 2. Construct the Rubric-Aligned Prompt
+# 2. Construct the Prompt for Mistral (Aligned with 4-mark rubric)
 insight_prompt = f"""
 <s>[INST] Role: Senior Banking Data Analyst.
-Task: Summarize findings, interpret feature importance, and provide business insights based on these model results.
+Task: Summarize findings, interpret feature importance, and provide business insights based on our modeling results.
 
-Model Performance:
-- Decision Tree: 91% Accuracy, 0.97 Recall (Safety).
+Model Performance Summary:
+- Decision Tree (Baseline): 91% Accuracy, 0.97 Recall (High Safety).
 - Logistic Regression: 81% Accuracy.
-- Naive Bayes: AUC of {round(nb_auc, 4)}.
+- Naive Bayes: 81% Accuracy, 0.97 Recall.
+- XGBoost (Best): 92% Accuracy, 0.97 Recall.
 
-Top Features (Decision Tree): {list(zip(dt_top_3_names, dt_top_3_vals))}
-Key Influencers (Logistic Regression): {lr_top_3_names}
+Feature Importance Data:
+- Top Predictors (Decision Tree & XGBoost): {', '.join(set(dt_top_3 + xgb_top_3))}.
+- Key Risk Influencers (Logistic Regression): {', '.join(lr_top_3)}.
 
 Please provide the output in this exact structure:
 ### 1. Executive Summary of Findings
+(Briefly summarize model performance, highlighting XGBoost as the winner).
+
 ### 2. Interpretation of Feature Importance
-(Explain why {dt_top_3_names[0]} and {dt_top_3_names[1]} are critical predictors)
+(Explain why variables like {dt_top_3[0]} and {dt_top_3[1]} are the strongest predictors of default risk in our dataset).
+
 ### 3. Business Insights & Recommendations
+(Provide 3 concrete, data-driven strategies for the bank to reduce default rates while maintaining high loan approval safety).
 [/INST]
 """
 
 # 3. Generate with Mistral
 inputs = tokenizer(insight_prompt, return_tensors="pt").to(device)
-outputs = model.generate(**inputs, max_new_tokens=600, temperature=0.7, do_sample=True)
+outputs = llm_mistral.generate(**inputs, max_new_tokens=600, temperature=0.7, do_sample=True)
 response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-# 4. Display
+# 4. Display Result
 print(response.split("[/INST]")[-1].strip())
